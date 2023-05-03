@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.23107.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExcelImporter", "ExcelImporter\ExcelImporter.csproj", "{09C6EC40-0A1A-4674-87BD-5FB477467C03}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExcelExporter", "ExcelExporter\ExcelExporter.csproj", "{0D3825C8-9DA4-4058-BE50-C9D38C2CFC94}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{09C6EC40-0A1A-4674-87BD-5FB477467C03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09C6EC40-0A1A-4674-87BD-5FB477467C03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09C6EC40-0A1A-4674-87BD-5FB477467C03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09C6EC40-0A1A-4674-87BD-5FB477467C03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D3825C8-9DA4-4058-BE50-C9D38C2CFC94}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D3825C8-9DA4-4058-BE50-C9D38C2CFC94}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D3825C8-9DA4-4058-BE50-C9D38C2CFC94}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D3825C8-9DA4-4058-BE50-C9D38C2CFC94}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
