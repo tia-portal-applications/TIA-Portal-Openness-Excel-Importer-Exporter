@@ -14,6 +14,7 @@ namespace ExcelExporter
     class Program
     {
         static string opennessDll;
+        static public bool verbose = false;
         static private Assembly DomainAssemblyResolver(object sender, ResolveEventArgs args)
         {
             int index = args.Name.IndexOf("Siemens.Engineering,");
@@ -51,6 +52,7 @@ namespace ExcelExporter
                 Console.WriteLine("Please define a screen name (or set -all to export all screens):");
                 Console.WriteLine("If you want to export only defined attributes, please start this tool again with arguments like this: ");
                 Console.WriteLine("HMI_Panel/Screen_1 Left Top Authorization");
+                Console.WriteLine("You can also add the verbose flag like this for more output: HMI_Panel/Screen_1 Left Top Authorization --verbose");
                 args = Console.ReadLine().Split(' ');
             }
             
@@ -68,6 +70,11 @@ namespace ExcelExporter
                 if (args.Length > 1)
                 {
                     definedAttributes = args.ToList();
+                    if (definedAttributes.Contains("--verbose"))
+                    {
+                        verbose = true;
+                        definedAttributes.Remove("--verbose");
+                    }
                     definedAttributes.RemoveAt(0); // remove first input (Runtime/screenname)
                     setProperties = true; 
                 }
@@ -212,7 +219,7 @@ namespace ExcelExporter
                 }
                 else
                 {
-                    Console.WriteLine(defaultObject.ToString());
+                    if (verbose) Console.WriteLine(defaultObject.ToString());
                     var differencesScreenItem = new Dictionary<string, object>();
                         GetDifferencesScreenItem(attributes, defaultObject, ref differencesScreenItem);
                     differencesScreenItem.Add("Type", type); // type is always needed to create the object again

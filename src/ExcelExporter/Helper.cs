@@ -77,9 +77,12 @@ namespace ExcelExporter
 
             foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
             {
-                Console.WriteLine(attributeInfo);
-                var test = obj.GetAttribute(attributeInfo.Name);
-                Console.WriteLine(test);
+                if (Program.verbose)
+                {
+                    Console.WriteLine(attributeInfo);
+                    var test = obj.GetAttribute(attributeInfo.Name);
+                    Console.WriteLine(test);
+                }
             }
 
             if (!(obj is MultilingualText))
