@@ -180,6 +180,7 @@ namespace ExcelImporter
                     finally
                     {
                         workbook.Close();
+                        xlApp.Quit();
                         Marshal.ReleaseComObject(xlApp);
                         Marshal.ReleaseComObject(workbook);
                         Marshal.ReleaseComObject(worksheet);
