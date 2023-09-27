@@ -535,7 +535,14 @@ namespace ExcelImporter
 
             try
             {
-                obj.SetAttribute(keyToSet.ToString(), attrVal);
+                if (keyToSet == "HotKey")
+                {
+                    Console.WriteLine("\"HotKey\" is not a settable property.");
+                }
+                else
+                {
+                    obj.SetAttribute(keyToSet.ToString(), attrVal);
+                }
             }
             catch (Exception ex) {
                 Console.WriteLine(ex.Message);
