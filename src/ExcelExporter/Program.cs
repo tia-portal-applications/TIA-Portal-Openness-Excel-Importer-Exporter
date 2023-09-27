@@ -289,7 +289,11 @@ namespace ExcelExporter
                     object defaultValue = null;
                     if (defaultObject.TryGetValue(attribute.Key, out defaultValue) && defaultValue != null)
                     {
-                        if (string.Compare(attribute.Value.ToString(), defaultValue.ToString(), true) != 0)
+                        if (attribute.Value == null)
+                        {
+                            differencesScreenItem.Add(attribute.Key, attribute.Value);
+                        }
+                        else if (string.Compare(attribute.Value.ToString(), defaultValue.ToString(), true) != 0)
                         {
                             differencesScreenItem.Add(attribute.Key, attribute.Value);
                         }
