@@ -100,6 +100,7 @@ namespace ExcelImporter
                 foreach (string file in files)
                 {
                     string filename = Path.GetFileName(file);
+                    if (filename.StartsWith("~$")) continue;
                     Microsoft.Office.Interop.Excel.Application xlApp = null;
                     Microsoft.Office.Interop.Excel.Workbook workbook = null;
                     Microsoft.Office.Interop.Excel.Range range = null;
