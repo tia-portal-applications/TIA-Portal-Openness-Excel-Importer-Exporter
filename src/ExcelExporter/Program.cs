@@ -139,6 +139,7 @@ namespace ExcelExporter
                 }
                 finally
                 {
+                    xlApp.Quit();
                     Marshal.ReleaseComObject(xlApp);
                     Marshal.ReleaseComObject(workbook);
                     Marshal.ReleaseComObject(worksheet);
