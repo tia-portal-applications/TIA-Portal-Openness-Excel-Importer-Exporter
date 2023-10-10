@@ -483,7 +483,32 @@ namespace ExcelImporter
 
         static public void SetMyAttributesSimpleTypes(string keyToSet, object valueToSet, IEngineeringObject obj)
         {
-            Type _type = obj.GetAttribute(keyToSet).GetType();
+            object _attr;
+            // To reach the MultilingualText handling branch later, we need to get past the
+            // EngineeringNotSupportedException that trying to access the attribute raises.
+            try
+            {
+                _attr = obj.GetAttribute(keyToSet);
+            }
+            catch (Siemens.Engineering.EngineeringNotSupportedException ex)
+            {
+                Console.WriteLine("Cannot access {0} using GetAttribute(): {1}", keyToSet, ex.Message);
+                _attr = null;
+            }
+            Type _type = null;
+            if (_attr != null)
+            {
+                _type = _attr.GetType();
+            }
+            else
+            {
+                var attrInfos = obj.GetAttributeInfos();
+                var attrInfo = attrInfos.Where(x => x.Name == keyToSet);
+                if (attrInfo.Any())
+                {
+                    _type = attrInfo.First().SupportedTypes.First();
+                }
+            }
 
             object attrVal = null;
             if (_type != null && _type.BaseType == typeof(Enum))
