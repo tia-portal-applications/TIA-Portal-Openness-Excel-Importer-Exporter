@@ -1,9 +1,7 @@
 ﻿using Siemens.Engineering;
-using Siemens.Engineering.HmiUnified;
 using Siemens.Engineering.HmiUnified.UI.Base;
 using Siemens.Engineering.HmiUnified.UI.Screens;
 using Siemens.Engineering.HmiUnified.UI.Shapes;
-using Siemens.Engineering.HW.Features;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -16,8 +14,8 @@ using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Flashing;
 using Siemens.Engineering.HmiUnified.UI;
 using Siemens.Engineering.HmiUnified.UI.Controls;
-using Siemens.Engineering.HmiUnified.UI.Widgets;
-using Siemens.Engineering.HmiUnified.UI.ScreenGroup;
+using Siemens.Engineering.HmiUnified.UI.Dynamization.Tag;
+using UnifiedOpennessLibrary;
 
 namespace ExcelImporter
 {
@@ -28,172 +26,114 @@ namespace ExcelImporter
     }
     class Program
     {
-        static string opennessDll;
-        static private Assembly DomainAssemblyResolver(object sender, ResolveEventArgs args)
-        {
-            int index = args.Name.IndexOf("Siemens.Engineering,");
-
-            if (index != -1 || args.Name == "Siemens.Engineering")
-            {
-                return Assembly.LoadFrom(opennessDll);
-            }
-
-            return null;
-        }
+        public static UnifiedOpennessConnector unifiedData = null;
         static void Main(string[] args)
         {
-            // 0. Load latest TIA Openness DLL dynamically, so it works also in all further versions
-            string[] dirs = Directory.GetDirectories(@"C:\Program Files\Siemens\Automation\", "Portal *");
-            // opennessDll = @"C:\Program Files\Siemens\Automation\Portal V16\PublicAPI\V16\Siemens.Engineering.dll";
-            var latestVersionDirectory = dirs[dirs.Length - 1];
-            string[] opennessDirs = Directory.GetDirectories(latestVersionDirectory + "\\PublicAPI", "V*");
-            var latestOpennessDir = opennessDirs.Last(x => !x.ToLower().EndsWith("addin"));
-            opennessDll = latestOpennessDir + "\\Siemens.Engineering.dll";
-            AppDomain.CurrentDomain.AssemblyResolve += DomainAssemblyResolver;
-
-            // TiaPortal reference must be in a seperate function to lazyload the assembly
-            Work(args);
-            Console.WriteLine("Import finished");
-        }
-
-        private static IEnumerable<HmiScreen> GetScreens(HmiSoftware sw)
-        {
-            var allScreens = sw.Screens.ToList();
-            allScreens.AddRange(ParseGroups(sw.ScreenGroups));
-            return allScreens;
-        }
-
-        private static IEnumerable<HmiScreen> ParseGroups(HmiScreenGroupComposition parentGroups)
-        {
-            foreach (var group in parentGroups)
+            using (var unifiedData = new UnifiedOpennessConnector("V19", args, new List<CmdArgument>(), "ExcelImporter"))
             {
-                foreach (var screen in group.Screens)
-                {
-                    yield return screen;
-                }
-                foreach (var screen in ParseGroups(group.Groups))
-                {
-                    yield return screen;
-                }
+                Program.unifiedData = unifiedData;
+                Work();
             }
+            unifiedData.Log("Import finished");
         }
 
-
-        static void Work(string[] args) {
-
-            // 1. Connect to TIA Portal and find screen
-            TiaPortal tiaPortal = null;
-            try
+        static void Work()
+        {
+            //2.Open Excel sheet
+            string[] files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.xlsx");
+            //iterate over every file
+            foreach (string file in files)
             {
-                // get UnifiedRuntime
-                var hmiSoftwares = GetHmiSoftwares(ref tiaPortal);
-                HmiSoftware software = hmiSoftwares.FirstOrDefault();
-                if (software == null)
-                {
-                    new Exception("No WinCC Unified software found. Please add a WinCC Unified device and run this app again!");
-                }
+                string filename = Path.GetFileName(file);
+                Microsoft.Office.Interop.Excel.Application xlApp = null;
+                Microsoft.Office.Interop.Excel.Workbook workbook = null;
+                Microsoft.Office.Interop.Excel.Range range = null;
+                Microsoft.Office.Interop.Excel.Worksheet worksheet = null;
 
-                //2.Open Excel sheet
-                string[] files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.xlsx");
-                var allScreens = GetScreens(software);
-                //iterate over every file
-                foreach (string file in files)
+                try
                 {
-                    string filename = Path.GetFileName(file);
-                    Microsoft.Office.Interop.Excel.Application xlApp = null;
-                    Microsoft.Office.Interop.Excel.Workbook workbook = null;
-                    Microsoft.Office.Interop.Excel.Range range = null;
-                    Microsoft.Office.Interop.Excel.Worksheet worksheet = null;
+                    xlApp = new Microsoft.Office.Interop.Excel.Application();
+                    workbook = xlApp.Workbooks.Open((Directory.GetCurrentDirectory() + "\\" + filename));
+                    worksheet = workbook.Worksheets[1];
+                    range = workbook.ActiveSheet.UsedRange;
 
-                    try
+
+                    if (!File.Exists(file))
                     {
-                        xlApp = new Microsoft.Office.Interop.Excel.Application();
-                        workbook = xlApp.Workbooks.Open((Directory.GetCurrentDirectory() + "\\" + filename));
-                        worksheet = workbook.Worksheets[1];
-                        range = workbook.ActiveSheet.UsedRange;
+                        unifiedData.Log("Cannot find a file with name '" + filename + "' in path '" + Directory.GetCurrentDirectory() + "'", LogLevel.Error);
+                        unifiedData.Log("Please place a file with name '" + filename + "' next to the app!", LogLevel.Error);
+                        return;
+                    }
 
 
-                        if (!File.Exists(file))
+
+                    // get screen filename=foo.xlsx
+                    var screenName = filename.Split('.')[0];
+                    var screen = unifiedData.Screens.FirstOrDefault(s => s.Name == screenName);
+                    if (screen == null)
+                    {
+                        screen = unifiedData.UnifiedSoftware.Screens.Create(screenName);
+                        unifiedData.Log("New screen with name '" + screenName + "' added.", LogLevel.Debug);
+                    }
+                    else
+                    {
+                        unifiedData.Log("Found screen with name '" + screenName + "'.", LogLevel.Debug);
+                    }
+                    // 3. Read Excel file and add elements to TIA portal
+                    int tableColumn = 1;
+                    int tableRow = 2;
+
+                    while (true)
+                    {
+                        if (worksheet.Cells[1][tableRow].value2 == null)
                         {
-                            Console.WriteLine("Cannot find a file with name '" + filename + "' in path '" + Directory.GetCurrentDirectory() + "'");
-                            Console.WriteLine("Please place a file with name '" + filename + "' next to the app!");
-                            return;
+                            break; // end of file
                         }
-
-
-
-                        // get screen filename=foo.xlsx
-                        var screenName = filename.Split('.')[0];
-                        var screen = allScreens.FirstOrDefault(s => s.Name == screenName);
-                        if (screen == null)
-                        {
-                            screen = software.Screens.Create(screenName);
-                            Console.WriteLine("New screen with name '" + screenName + "' added.");
-                        }
-                        else
-                        {
-                            Console.WriteLine("Found screen with name '" + screenName + "'.");
-                        }
-                        // 3. Read Excel file and add elements to TIA portal
-                        int tableColumn = 1;
-                        int tableRow = 2;
-
+                        Dictionary<string, object> propertyNameValues = new Dictionary<string, object>();
                         while (true)
                         {
-                            if (worksheet.Cells[1][tableRow].value2 == null)
+                            //Check if cell is empty and add to dictonary
+                            if (worksheet.Cells[tableColumn][tableRow].value2 == null)
                             {
-                                break; // end of file
+                                propertyNameValues.Add(worksheet.Cells[tableColumn][1].value2, "");
                             }
-                            Dictionary<string, object> propertyNameValues = new Dictionary<string, object>();
-                            while (true)
+                            else
                             {
-                                //Check if cell is empty and add to dictonary
-                                if (worksheet.Cells[tableColumn][tableRow].value2 == null)
-                                {
-                                    propertyNameValues.Add(worksheet.Cells[tableColumn][1].value2, "");
-                                }
-                                else
-                                {
-                                    propertyNameValues.Add(worksheet.Cells[tableColumn][1].value2, worksheet.Cells[tableColumn][tableRow].value2);
-                                }
-
-                                tableColumn++;
-                                //check if all attributes are read in and Create the Screen Item 
-                                if (worksheet.Cells[tableColumn][1].value2 == null)
-                                {
-                                    tableColumn = 1;
-                                    break;
-                                }
+                                propertyNameValues.Add(worksheet.Cells[tableColumn][1].value2, worksheet.Cells[tableColumn][tableRow].value2);
                             }
-                            CreateScreenItem(screen, propertyNameValues);
-                            Console.WriteLine();
-                            tableRow++;
-                        }
 
-                        for (int tableRow_ = 2; worksheet.Cells[1][tableRow_].value2 != null; tableRow_++)
-                        {
-                            for (int tableColumn_ = 1; worksheet.Cells[tableColumn_][1].value2 != null; tableColumn_++)
-                            { }
+                            tableColumn++;
+                            //check if all attributes are read in and Create the Screen Item 
+                            if (worksheet.Cells[tableColumn][1].value2 == null)
+                            {
+                                tableColumn = 1;
+                                break;
+                            }
                         }
-
+                        CreateScreenItem(screen, propertyNameValues);
+                        Console.WriteLine();
+                        tableRow++;
                     }
-                    finally
+
+                    for (int tableRow_ = 2; worksheet.Cells[1][tableRow_].value2 != null; tableRow_++)
                     {
-                        workbook.Close();
-                        Marshal.ReleaseComObject(xlApp);
-                        Marshal.ReleaseComObject(workbook);
-                        Marshal.ReleaseComObject(worksheet);
-                        Marshal.ReleaseComObject(range);
-                        xlApp = null;
-                        workbook = null;
-                        worksheet = null;
-                        range = null;
+                        for (int tableColumn_ = 1; worksheet.Cells[tableColumn_][1].value2 != null; tableColumn_++)
+                        { }
                     }
+
                 }
-            }
-            finally
-            {
-                tiaPortal.Dispose();
+                finally
+                {
+                    workbook.Close();
+                    Marshal.ReleaseComObject(xlApp);
+                    Marshal.ReleaseComObject(workbook);
+                    Marshal.ReleaseComObject(worksheet);
+                    Marshal.ReleaseComObject(range);
+                    xlApp = null;
+                    workbook = null;
+                    worksheet = null;
+                    range = null;
+                }
             }
         }
 
@@ -203,7 +143,7 @@ namespace ExcelImporter
             propertyNameValues.Remove("Name");
             string sType = propertyNameValues["Type"].ToString();
             propertyNameValues.Remove("Type");
-            Console.WriteLine("CreateScreenItem: " + sName + " of type " + sType);
+            unifiedData.Log("CreateScreenItem: " + sName + " of type " + sType, LogLevel.Debug);
             Type type = null;
             if (sType == "HmiLine" || sType == "HmiPolyline" || sType == "HmiPolygon" || sType == "HmiEllipse" || sType == "HmiEllipseSegment"
                 || sType == "HmiCircleSegment" || sType == "HmiEllipticalArc" || sType == "HmiCircularArc" || sType == "HmiCircle" || sType == "HmiRectangle"
@@ -232,12 +172,12 @@ namespace ExcelImporter
             }
             else if (sType.ToLower() == "pause")
             {
-                Console.WriteLine("Progress paused due to command '" + sType + "'. Please hit any key to continue...");
+                unifiedData.Log("Progress paused due to command '" + sType + "'. Please hit any key to continue...");
                 Console.Read();
                 return;
             }
             else {
-                Console.WriteLine("ScreenItem with type " + sType + " is not implemented yet!");
+                unifiedData.Log("ScreenItem with type " + sType + " is not implemented yet!", LogLevel.Warning);
                 return;
             }
 
@@ -260,7 +200,7 @@ namespace ExcelImporter
                     continue;
                 }
                 else { 
-                    Console.WriteLine("Will try to set Property '" + propertyNameValue.Key + "' with value '" + propertyNameValue.Value + "'.");
+                    unifiedData.Log("Will try to set Property '" + propertyNameValue.Key + "' with value '" + propertyNameValue.Value + "'.", LogLevel.Debug);
                     try
                     {
                         //cover # Attributes
@@ -285,7 +225,7 @@ namespace ExcelImporter
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("Cannot set property '" + propertyNameValue.Key + "' with value '" + propertyNameValue.Value + "'.");
+                        unifiedData.Log("Cannot set property '" + propertyNameValue.Key + "' with value '" + propertyNameValue.Value + "'.", LogLevel.Warning);
                     }
                 }
             }
@@ -370,7 +310,12 @@ namespace ExcelImporter
                     dynStart = i;
                 }
             }
-            
+            var propertyNameList = new List<string>();
+            for (int i = dynStart + 1; i < keyLength; i++)
+            {
+                propertyNameList.Add(keys[i]);
+            }
+            var propertyName = string.Join(".", propertyNameList);            
 
             var findDyn = findMethod.Invoke(comp, new object[] { keys[0] });
             
@@ -382,7 +327,7 @@ namespace ExcelImporter
                     Globals.scriptTemp = null;
                 }
 
-                if (screenItem is Siemens.Engineering.HmiUnified.UI.Controls.HmiFaceplateContainer)
+                if (screenItem is HmiFaceplateContainer)
                 {
                     var fpContainer = screenItem as HmiFaceplateContainer;
                     var str = keys[0].ToString().Split('[')[1];
@@ -424,7 +369,7 @@ namespace ExcelImporter
                 }
                 else
                 {
-                    SetPropertyRecursive(keys[dynStart + 1], value.ToString(), (Globals.scriptTemp as IEngineeringObject));
+                    SetPropertyRecursive(propertyName, value.ToString(), (Globals.scriptTemp as IEngineeringObject));
                 }
             }
             else if (keys[dynStart].StartsWith("Tag") && findMethod != null)
@@ -442,7 +387,7 @@ namespace ExcelImporter
                 {
                     temp = (TagDynamization)findMethod.Invoke(comp, new object[] { keys[dynStart - 1] }) ?? screenItem.Dynamizations.Create<TagDynamization>(keys[dynStart - 1]);
                 }
-                SetPropertyRecursive(keys[dynStart + 1], value.ToString(), (temp as IEngineeringObject));
+                SetPropertyRecursive(propertyName, value.ToString(), (temp as IEngineeringObject));
             }
             else if (keys[dynStart].StartsWith("ResourceList") && findMethod != null)
             {
@@ -459,7 +404,7 @@ namespace ExcelImporter
                 {
                     temp = (ResourceListDynamization)findMethod.Invoke(comp, new object[] { keys[dynStart - 1] }) ?? screenItem.Dynamizations.Create<ResourceListDynamization>(keys[dynStart - 1]);
                 }
-                    SetPropertyRecursive(keys[dynStart + 1], value.ToString(), (temp as IEngineeringObject));
+                    SetPropertyRecursive(propertyName, value.ToString(), (temp as IEngineeringObject));
             }
             else if (keys[dynStart].StartsWith("Flashing") && findMethod != null)
             {
@@ -476,14 +421,15 @@ namespace ExcelImporter
                 {
                     temp = (FlashingDynamization)findMethod.Invoke(comp, new object[] { keys[dynStart - 1] }) ?? screenItem.Dynamizations.Create<FlashingDynamization>(keys[dynStart - 1]);
                 }
-                    SetPropertyRecursive(keys[dynStart + 1], value.ToString(), (temp as IEngineeringObject));
+                    SetPropertyRecursive(propertyName, value.ToString(), (temp as IEngineeringObject));
             }
             Globals.oldPropertyName = keys[dynStart - 1];
         }
 
         static public void SetMyAttributesSimpleTypes(string keyToSet, object valueToSet, IEngineeringObject obj)
         {
-            Type _type = obj.GetAttribute(keyToSet).GetType();
+            Type _type = obj.GetAttribute(keyToSet)?.GetType() ?? 
+                obj.GetAttributeInfos().FirstOrDefault(x => x.Name == keyToSet)?.SupportedTypes.FirstOrDefault();
 
             object attrVal = null;
             if (_type != null && _type.BaseType == typeof(Enum))
@@ -506,7 +452,7 @@ namespace ExcelImporter
 
                 if (obj == null)
                 {
-                    Console.WriteLine("Cannot find a language for the text property '" + keyToSet + "'.");
+                    unifiedData.Log("Cannot find a language for the text property '" + keyToSet + "'.", LogLevel.Warning);
                     return;
                 }
                 keyToSet = "Text";
@@ -518,7 +464,7 @@ namespace ExcelImporter
                 obj = multiLingText.Items.First(x => x.Language.Culture.Name == keyToSet);
                 if (obj == null)
                 {
-                    Console.WriteLine("Cannot find a language for the text property '" + keyToSet + "'.");
+                    unifiedData.Log("Cannot find a language for the text property '" + keyToSet + "'.", LogLevel.Warning);
                     return;
                 }
                 keyToSet = "Text";
@@ -538,7 +484,20 @@ namespace ExcelImporter
                 obj.SetAttribute(keyToSet.ToString(), attrVal);
             }
             catch (Exception ex) {
-                Console.WriteLine(ex.Message);
+                unifiedData.Log(ex.Message, LogLevel.Warning);
+            }
+            if (keyToSet == "ConditionType")
+            {
+                var mappingTable = obj as MappingTable;
+                if (mappingTable != null)
+                {
+                    // remove all entries always when a new condition is recognized, because entries can be mixed today.
+                    int count = mappingTable.Entries.Count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        mappingTable.Entries[0].Delete();
+                    }
+                }
             }
         }
 
@@ -557,7 +516,35 @@ namespace ExcelImporter
                     int count = composition.Count;
                     while (count <= index)
                     {
-                        deeperObj = (composition is HmiPointComposition) ? (composition as HmiPointComposition).Create(0, 0) : composition.Create(composition[0].GetType(), null);
+                        if (composition is HmiPointComposition)
+                        {
+                            deeperObj = (composition as HmiPointComposition).Create(0, 0);
+                        }
+                        else if (composition is MappingTableEntryBaseComposition)
+                        {
+                            var comp = (composition as MappingTableEntryBaseComposition);
+                            var conditionType = (comp.Parent as MappingTable).ConditionType;
+                            switch (conditionType)
+                            {
+                                case ConditionType.Range:
+                                    comp.Create<MappingTableEntryRange>();
+                                    break;
+                                case ConditionType.Bitmask:
+                                    comp.Create(BitDynamizationType.MultiBit);
+                                    break;
+                                case ConditionType.Singlebit:
+                                    comp.Create(BitDynamizationType.SingleBit);
+                                    break;
+                                case ConditionType.None:
+                                default:
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            Type type = composition[0].GetType();
+                            deeperObj = composition.Create(type, null);
+                        }
                         count++;
                     }
                     if (deeperObj == null)
@@ -579,29 +566,5 @@ namespace ExcelImporter
                 SetMyAttributesSimpleTypes(key, value, relevantTag);
             }
         }
-        static IEnumerable<HmiSoftware> GetHmiSoftwares(ref TiaPortal tiaPortal)
-        {
-            var tiaProcesses = TiaPortal.GetProcesses();
-            if (tiaProcesses.Count == 0)
-            {
-                new Exception("No TIA Portal instance is running. Please start TIA Portal and open a project with a WinCC Unified device and run this app again!");
-            }
-            var process = tiaProcesses[0];
-            tiaPortal = process.Attach();
-            Console.WriteLine("Attached to TIA Portal process id: " + process.Id);
-            if (tiaPortal.Projects.Count == 0)
-            {
-                new Exception("No TIA Portal project is open. Please open a project with a WinCC Unified device and run this app again!");
-            }
-            Project tiaPortalProject = tiaPortal.Projects.First();
-            Console.WriteLine("Attached to TIA Portal project with name: " + tiaPortalProject.Name);
-            return
-                from device in tiaPortalProject.Devices
-                from deviceItem in device.DeviceItems
-                let softwareContainer = deviceItem.GetService<SoftwareContainer>()
-                where softwareContainer?.Software is HmiSoftware
-                select softwareContainer.Software as HmiSoftware;
-        }
-
     }
 }

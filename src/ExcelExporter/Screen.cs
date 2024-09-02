@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Siemens.Engineering.HmiUnified;
-using System.Drawing;
 using Siemens.Engineering;
 using Siemens.Engineering.HmiUnified.UI.Dynamization;
 using Siemens.Engineering.HmiUnified.UI;
@@ -12,61 +11,33 @@ using Siemens.Engineering.HmiUnified.UI.Base;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Flashing;
 using Siemens.Engineering.HmiUnified.UI.Parts;
-using Siemens.Engineering.HmiUnified.UI.ScreenGroup;
 
 namespace ExcelExporter
 {
     class Screen : ITiaObject
     {
         private static IEngineeringObject dyn;
-        private string screenName = "-all";
         private List<string> definedAttributes = null;
-        public Screen(string screenName = "-all", List<string> definedAttributes = null)
+        public Screen(List<string> definedAttributes = null)
         {
-            this.screenName = screenName;
             this.definedAttributes = definedAttributes;
         }
 
-        private static IEnumerable<HmiScreen> GetScreens(HmiSoftware sw)
-        {
-            var allScreens = sw.Screens.ToList();
-            allScreens.AddRange(ParseGroups(sw.ScreenGroups));
-            return allScreens;
-        }
-
-        private static IEnumerable<HmiScreen> ParseGroups(HmiScreenGroupComposition parentGroups)
-        {
-            foreach (var group in parentGroups)
-            {
-                foreach (var screen in group.Screens)
-                {
-                    yield return screen;
-                }
-                foreach (var screen in ParseGroups(group.Groups))
-                {
-                    yield return screen;
-                }
-            }
-        }
-
-        public Dictionary<string, List<Dictionary<string, object>>> Export(HmiSoftware hmiSoftware)
+        public Dictionary<string, List<Dictionary<string, object>>> Export(IEnumerable<HmiScreen> allScreens)
         {
             var list = new Dictionary<string, List<Dictionary<string, object>>>();
-            IEnumerable<HmiScreen> allScreens = GetScreens(hmiSoftware);
-            if (screenName != "-all")
-            {
-                allScreens = new List<HmiScreen>() { allScreens.First(s => s.Name == screenName) };
-            }
             //get main Screen
             //IEnumerable<HmiScreen> mainScreen = ;
             foreach (var screen in allScreens)
             {
-                
+                Program.unifiedData.Log("Screen: " + screen.Name);
                 var listScreenItems = new List<Dictionary<string, object>>();
                 listScreenItems.Add(Helper.GetAllMyAttributes(screen, ParseScreen, definedAttributes));
 
+                Program.unifiedData.Log("ScreenItems: ", UnifiedOpennessLibrary.LogLevel.Debug);
                 foreach (var screenItem in screen.ScreenItems)
                 {
+                    Program.unifiedData.Log(screenItem.Name, UnifiedOpennessLibrary.LogLevel.Debug);
                     var screenItem_ = Helper.GetAllMyAttributes(screenItem, ParseScreen, definedAttributes);
                     listScreenItems.Add(screenItem_);
                 }
@@ -110,53 +81,9 @@ namespace ExcelExporter
                 var dyns = new Dictionary<string, object>();
                 foreach (var dyn in (obj as UIBase).Dynamizations)
                 {
-                    var dynType = "";
-                    var attrKeys = from attributeInfo in dyn.GetType().GetProperties()
-                                   where attributeInfo.CanWrite
-                                   select attributeInfo.Name;
-                    var attrProps = dyn.GetAttributes(attrKeys);
-                    var attrDict = attrKeys.Zip(attrProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+                    var attrDict = Helper.GetAllMyAttributes(dyn, null, definedAttributes);
 
-                    if (dyn.DynamizationType == DynamizationType.Script)
-                    {
-                        dynType = "ScriptDynamization";
-                        var trigger = dyn.GetType().GetProperty("Trigger").GetValue(dyn);
-                        var triggerDict = new Dictionary<string, object>();
-
-                        triggerDict.Add("CustomDuration", trigger.GetType().GetProperty("CustomDuration").GetValue(trigger));
-                        triggerDict.Add("Type", trigger.GetType().GetProperty("Type").GetValue(trigger));
-                        triggerDict.Add("Tags", trigger.GetType().GetProperty("Tags").GetValue(trigger));
-
-                        attrDict.Add("Trigger", triggerDict as object);
-                    }
-                    else if (dyn.DynamizationType == DynamizationType.Flashing)
-                    {
-                        dynType = "FlashingDynamization";
-                        var tempDict = new Dictionary<string, object>();
-                        foreach (var item in attrDict)
-                        {
-                            if (item.Value.GetType().Name == "Color")
-                            {
-                                var color = (Color)item.Value;
-                                tempDict.Add(item.Key, "0x" + color.A.ToString("X2") + color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2"));
-                            }
-                            else
-                            {
-                                tempDict.Add(item.Key, item.Value);
-                            }
-                        }
-                        attrDict.Clear();
-                        attrDict = attrDict.Concat(tempDict).ToDictionary(x => x.Key, x => x.Value);
-                    }
-                    else if(dyn.DynamizationType == DynamizationType.Tag)
-                    {
-                        dynType = "TagDynamization";
-                    }
-                    else if (dyn.DynamizationType == DynamizationType.ResourceList)
-                    {
-                        dynType = "ResourceListDynamization";
-                    }
-
+                    string dynType = dyn.DynamizationType.ToString() + "Dynamization";
                     var dictPropertyName = dyn.PropertyName +"."+ dynType;
 
                     dict.Add(dictPropertyName, attrDict as Object);
@@ -240,9 +167,8 @@ namespace ExcelExporter
             }
         }
 
-        public void Import(HmiSoftware hmiSoftware, List<object> data)
+        public void Import(HmiSoftware hmiSoftware, List<object> data, IEnumerable<HmiScreen> allScreens)
         {
-            IEnumerable<HmiScreen> allScreens = GetScreens(hmiSoftware);
             HmiScreen _screen = null;
             foreach (var topLevel in data)
             {
@@ -265,7 +191,7 @@ namespace ExcelExporter
                             Type type = null;
                             if (dataTree["Type"].ToString() == "HmiLine" || dataTree["Type"].ToString() == "HmiPolyline" || dataTree["Type"].ToString() == "HmiPolygon" || dataTree["Type"].ToString() == "HmiEllipse" || dataTree["Type"].ToString() == "HmiEllipseSegment"
                                 || dataTree["Type"].ToString() == "HmiCircleSegment" || dataTree["Type"].ToString() == "HmiEllipticalArc" || dataTree["Type"].ToString() == "HmiCircularArc" || dataTree["Type"].ToString() == "HmiCircle" || dataTree["Type"].ToString() == "HmiRectangle"
-                                || dataTree["Type"].ToString() == "HmiGraphicView") 
+                                || dataTree["Type"].ToString() == "HmiGraphicView" || dataTree["Type"].ToString() == "HmiText") 
                             {
                                 type = Type.GetType("Siemens.Engineering.HmiUnified.UI.Shapes." + dataTree["Type"].ToString() + ", Siemens.Engineering");
                             }

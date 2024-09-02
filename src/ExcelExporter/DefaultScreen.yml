@@ -336,6 +336,36 @@ ScreenItems:
     Left: 0
     Right: 0
     Top: 0
+- Authorization: 
+  Enabled: true
+  ForeColor: 0xFF000000
+  Height: 40
+  HorizontalTextAlignment: Center
+  Left: 0
+  Name: 
+  Opacity: 1
+  RotationAngle: 0
+  RotationCenterPlacement: AbsoluteFromCenter
+  RotationCenterX: 0
+  RotationCenterY: 0
+  TabIndex: 0
+  TextTrimming: None
+  TextWrapping: NoWrap
+  Top: 0
+  VerticalTextAlignment: Center
+  Visible: true
+  VisualizeQuality: true
+  Width: 160
+  Type: HmiText
+  Font:
+    Italic: false
+    Name: SiemensSans
+    Size: 14
+    StrikeOut: false
+    Underline: false
+    Weight: Normal
+  Text:
+    en-US: Text
 - AlternateBackColor: 0xFF808080
   AlternateBorderColor: 0xFFFFFFFF
   Authorization: 
@@ -352,10 +382,12 @@ ScreenItems:
   Opacity: 1
   OutputFormat: ''
   ProcessValue: ''
+  RequireExplicitUnlock: false
   RotationAngle: 0
   RotationCenterPlacement: AbsoluteFromCenter
   RotationCenterX: 0
   RotationCenterY: 0
+  ShowFocusVisual: true
   TabIndex: 0
   TextTrimming: None
   Top: 0
@@ -391,13 +423,16 @@ ScreenItems:
   ForeColor: 0xFF000000
   Graphic: ''
   Height: 40
+  HotKey: 0
   Left: 0
   Name: 
   Opacity: 1
+  RequireExplicitUnlock: false
   RotationAngle: 0
   RotationCenterPlacement: AbsoluteFromCenter
   RotationCenterX: 0
   RotationCenterY: 0
+  ShowFocusVisual: true
   StyleItemClass: HmiButton
   TabIndex: 0
   Top: 0
@@ -439,14 +474,17 @@ ScreenItems:
   ForeColor: 0xFF000000
   Graphic: ''
   Height: 40
+  HotKey: 0
   IsAlternateState: false
   Left: 0
   Name: 
   Opacity: 1
+  RequireExplicitUnlock: false
   RotationAngle: 0
   RotationCenterPlacement: AbsoluteFromCenter
   RotationCenterX: 0
   RotationCenterY: 0
+  ShowFocusVisual: true
   StyleItemClass: HmiButton
   TabIndex: 0
   Top: 0
@@ -9621,6 +9659,13 @@ ScreenItems:
   Width: 120
   WindowFlags: None
   Type: HmiFaceplateContainer
+  RotationAngle: 0
+  RotationCenterPlacement: AbsoluteFromCenter
+  RotationCenterX: 0
+  RotationCenterY: 0
+  StyleItemClass: HmiFaceplateContainer
+  CaptionColor: 0xFF91939A
+  ShowFocusVisual: true
   Caption:
     ForeColor: 0xFF000000
     Visible: true

@@ -1,108 +1,47 @@
-﻿using Siemens.Engineering;
-using Siemens.Engineering.HmiUnified;
-using Siemens.Engineering.HW.Features;
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Office.Interop.Excel;
-using System.Reflection;
+using Siemens.Engineering.HmiUnified.UI.Dynamization.Tag;
+using UnifiedOpennessLibrary;
 
 namespace ExcelExporter
 {
     class Program
     {
-        static string opennessDll;
-        static public bool verbose = false;
-        static private Assembly DomainAssemblyResolver(object sender, ResolveEventArgs args)
-        {
-            int index = args.Name.IndexOf("Siemens.Engineering,");
-
-            if (index != -1 || args.Name == "Siemens.Engineering")
-            {
-                return Assembly.LoadFrom(opennessDll);
-            }
-
-            return null;
-        }
+        public static UnifiedOpennessConnector unifiedData = null;
         static void Main(string[] args)
         {
-            // 0. Load latest TIA Openness DLL dynamically, so it works also in all further versions
-            string[] dirs = Directory.GetDirectories(@"C:\Program Files\Siemens\Automation\", "Portal *");
-            // opennessDll = @"C:\Program Files\Siemens\Automation\Portal V16\PublicAPI\V16\Siemens.Engineering.dll";
-            var latestVersionDirectory = dirs[dirs.Length - 1];
-            string[] opennessDirs = Directory.GetDirectories(latestVersionDirectory + "\\PublicAPI", "V*");
-            var latestOpennessDir = opennessDirs.Last(x => !x.ToLower().EndsWith("addin"));
-            opennessDll = latestOpennessDir + "\\Siemens.Engineering.dll";
-            AppDomain.CurrentDomain.AssemblyResolve += DomainAssemblyResolver;
-
-            // TiaPortal reference must be in a seperate function to lazyload the assembly
-            Work(args);
-            Console.WriteLine("Export finished");
+            using (var unifiedData = new UnifiedOpennessConnector("V19", args, new List<CmdArgument>() { new CmdArgument()
+            {
+                Default = "", Required = false, OptionToSet = "DefinedAttributes", OptionLong = "-definedattributes", OptionShort = "--da", HelpText = "If you want to export only defined attributes, add a list seperated by semicolon, e.g. Left;Top;Authorization"
+            } }, "ExcelExporter"))
+            {
+                Program.unifiedData = unifiedData;
+                Work();
+            }
+            unifiedData.Log("Export finished");
         }
-        static void Work(string[] args)
+        static void Work()
         {
-            string screenName = "";
-            string runTimeName = "";
             bool setProperties = false; 
             List<string> definedAttributes = null;
-            while (args.Length == 0)
+            if (!string.IsNullOrEmpty(unifiedData.CmdArgs["DefinedAttributes"]))
             {
-                Console.WriteLine("Please define a screen name (or set -all to export all screens):");
-                Console.WriteLine("If you want to export only defined attributes, please start this tool again with arguments like this: ");
-                Console.WriteLine("HMI_Panel/Screen_1 Left Top Authorization");
-                Console.WriteLine("You can also add the verbose flag like this for more output: HMI_Panel/Screen_1 Left Top Authorization --verbose");
-                args = Console.ReadLine().Split(' ');
+                definedAttributes = unifiedData.CmdArgs["DefinedAttributes"].Split(';').ToList();
+                setProperties = true; 
             }
-            
-                string firstInput = args[0];
-                if (firstInput.Contains('/'))
-                {
-                    runTimeName = firstInput.Split('/')[0];
-                    screenName = firstInput.Split('/')[1];
-                }
-                else
-                {
-                    screenName = args[0];
-                }
-
-                if (args.Length > 1)
-                {
-                    definedAttributes = args.ToList();
-                    if (definedAttributes.Contains("--verbose"))
-                    {
-                        verbose = true;
-                        definedAttributes.Remove("--verbose");
-                    }
-                    definedAttributes.RemoveAt(0); // remove first input (Runtime/screenname)
-                    setProperties = true; 
-                }
             
             YAMLConverter converter = new YAMLConverter();
             var defaultValues = (converter.Read(Directory.GetCurrentDirectory() + "\\DefaultScreen.yml")[0] as Dictionary<object, object>).FirstOrDefault().Value as List<object>;
 
             Dictionary<string, List<Dictionary<string, object>>> exportedValues = new Dictionary<string, List<Dictionary<string, object>>>();
-            // 1. Connect to TIA Portal and find screen
-            TiaPortal tiaPortal = null;
-            try
-            {
-                // get UnifiedRuntime
-                var hmiSoftwares = GetHmiSoftwares(ref tiaPortal, runTimeName);
-                HmiSoftware software = hmiSoftwares.FirstOrDefault(); //find runtimeName
-                if (software == null)
-                {
-                    throw new Exception("No WinCC Unified software found. Please add a WinCC Unified device and run this app again!");
-                }
-                Screen screen = new Screen(screenName, definedAttributes);
-                exportedValues = screen.Export(software);
-            }
-            finally
-            {
-                tiaPortal.Dispose();
-            }
+           
+            Screen screen = new Screen(definedAttributes);
+            exportedValues = screen.Export(unifiedData.Screens);
             CreateExport(exportedValues, defaultValues, setProperties);
-            Console.WriteLine("Export done");
+            unifiedData.Log("Export done");
         }
 
         private static void CreateExport(Dictionary<string, List<Dictionary<string, object>>> exportedValues, List<object> defaultValues, bool setProperties)
@@ -178,6 +117,10 @@ namespace ExcelExporter
                         writePropertiesToCells(ref worksheet, rowIndex, list[i] as Dictionary<string, object>, ref columnContentToIndex, parentName + item.Key + "[" + i + "].");
                     }
                 }
+                else if (item.Value is ValueConverter)
+                {
+                    // TODO: implement to unpack the values. ValueConverter can be Range, Bitmask, Singlebit
+                }
                 else
                 {
                     int columnIndex = -1;
@@ -191,6 +134,11 @@ namespace ExcelExporter
                     if (item.Value is List<string>)
                     {
                         value = string.Join(",", item.Value as List<string>);
+                    }
+                    else if (value is bool)
+                    {
+                        // add a space at the end to make sure the english words for true and false will be used. Otherwise Excel will use the local language and it cannot be imported on another PC with different language.
+                        value = ((bool)value == true) ? "True " : "False ";
                     }
                     worksheet.Cells[rowIndex, columnIndex] = value;
                 }
@@ -215,11 +163,11 @@ namespace ExcelExporter
                 }) as Dictionary<object, object>;
                 if (defaultObject == null)
                 {
-                    Console.WriteLine("Cannot find default type with name: " + type);
+                    unifiedData.Log("Cannot find default type with name: " + type, LogLevel.Warning);
                 }
                 else
                 {
-                    if (verbose) Console.WriteLine(defaultObject.ToString());
+                    unifiedData.Log(defaultObject.ToString(), LogLevel.Debug);
                     var differencesScreenItem = new Dictionary<string, object>();
                         GetDifferencesScreenItem(attributes, defaultObject, ref differencesScreenItem);
                     differencesScreenItem.Add("Type", type); // type is always needed to create the object again
@@ -300,39 +248,6 @@ namespace ExcelExporter
                     }
                 }
             }
-        }
-
-        static IEnumerable<HmiSoftware> GetHmiSoftwares(ref TiaPortal tiaPortal, string deviceName)
-        {
-            var tiaProcesses = TiaPortal.GetProcesses();
-            if (tiaProcesses.Count == 0)
-            {
-                new Exception("No TIA Portal instance is running. Please start TIA Portal and open a project with a WinCC Unified device and run this app again!");
-            }
-            var process = tiaProcesses[0];
-            tiaPortal = process.Attach();
-            Console.WriteLine("Attached to TIA Portal process id: " + process.Id);
-            if (tiaPortal.Projects.Count == 0)
-            {
-                new Exception("No TIA Portal project is open. Please open a project with a WinCC Unified device and run this app again!");
-            }
-            Project tiaPortalProject = tiaPortal.Projects.First();
-            Console.WriteLine("Attached to TIA Portal project with name: " + tiaPortalProject.Name);
-            var software = from device in tiaPortalProject.Devices
-                           from deviceItem in device.DeviceItems
-                           let softwareContainer = deviceItem.GetService<SoftwareContainer>()
-                           where softwareContainer?.Software is HmiSoftware && (string.IsNullOrWhiteSpace(deviceName) || device.Name == deviceName)
-                           select softwareContainer.Software as HmiSoftware;
-            if (software == null)
-            {
-                software = from device in tiaPortalProject.Devices
-                               from deviceItem in device.DeviceItems
-                               let softwareContainer = deviceItem.GetService<SoftwareContainer>()
-                               where softwareContainer?.Software is HmiSoftware
-                               select softwareContainer.Software as HmiSoftware;
-            }
-            return software;
-                
         }
     }
 }

@@ -1,15 +1,8 @@
 ﻿using Siemens.Engineering;
-using Siemens.Engineering.HmiUnified.HmiAlarm;
-using Siemens.Engineering.HmiUnified.HmiTags;
-using Siemens.Engineering.HmiUnified.UI;
-using Siemens.Engineering.HmiUnified.UI.Dynamization;
-using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
-using Siemens.Engineering.HmiUnified.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Text;
 
 namespace ExcelExporter
 {
@@ -29,7 +22,7 @@ namespace ExcelExporter
         {
             //Leaves           
             var attrKeys = from attributeInfo in obj.GetAttributeInfos()
-                           where attributeInfo.AccessMode.ToString() == "ReadWrite" && (definedAttributes == null ||fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null)
+                           where Helper.IsSimple(attributeInfo.SupportedTypes.FirstOrDefault()) && attributeInfo.AccessMode.ToString() == "ReadWrite" && (definedAttributes == null ||fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null)
                            select attributeInfo.Name;
             var attrProps = obj.GetAttributes(attrKeys);
             var attrDict = attrKeys.Zip(attrProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
@@ -75,13 +68,12 @@ namespace ExcelExporter
                 }
             }
 
-            foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
+            if (Program.unifiedData.CmdArgs["LogLevel"] == "Debug")
             {
-                if (Program.verbose)
+                foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
                 {
-                    Console.WriteLine(attributeInfo);
-                    var test = obj.GetAttribute(attributeInfo.Name);
-                    Console.WriteLine(test);
+                    Program.unifiedData.Log(attributeInfo.Name, UnifiedOpennessLibrary.LogLevel.Debug);
+                    Program.unifiedData.Log(obj.GetAttribute(attributeInfo.Name).ToString(), UnifiedOpennessLibrary.LogLevel.Debug);
                 }
             }
 
@@ -197,6 +189,22 @@ namespace ExcelExporter
                     multiLingualText.Add(item.Language.Culture.ToString(), item.Text as object);
                 }
             }
+        }
+        static public bool IsSimple(Type type)
+        {
+            if(type == null)
+            {
+                return true;
+            }
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                // nullable type, check if the nested type is simple.
+                return IsSimple(type.GetGenericArguments()[0]);
+            }
+            return type.IsPrimitive
+              || type.IsEnum
+              || type.Equals(typeof(string))
+              || type.Equals(typeof(decimal));
         }
     }
 }
