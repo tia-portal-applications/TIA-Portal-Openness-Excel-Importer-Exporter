@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>UnifiedOpennessLibrary</name>
+    </assembly>
+    <members>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.OptionToSet">
+            <summary>
+            This is how you may access the option afterwards in your code, e.g. if you set it to "MyOption" you may access via CmdArgs["MyOption"]
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.OptionShort">
+            <summary>
+            this is how the user can define this option by a shortcut. Recommended is to use one dash as prefix, like this: -m
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.OptionLong">
+            <summary>
+            this is how the user can define this option by a long name. Recommended is to use two dashes as prefix, like this: --myoption
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.HelpText">
+            <summary>
+            the help text for your option will be shown, if the user forgets to add a required option or if he types -h or --help
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.Default">
+            <summary>
+            the default value of your option, e.g. "yes"
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.Required">
+            <summary>
+            define if your option is required or not. If it is required, the tool will stop, if the user does not add this option. Default: false.
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.CmdArgument.IsParsed">
+            <summary>
+            internal bool to check, if this option was already set by the user or not and then to check, if all required options are set
+            </summary>
+        </member>
+        <member name="F:UnifiedOpennessLibrary.UnifiedOpennessConnector.opennessDll">
+            <summary>
+            will be generated in the constructor by the currently running TIA Portal process version
+            </summary>
+        </member>
+        <member name="M:UnifiedOpennessLibrary.UnifiedOpennessConnector.#ctor(System.String,System.String[],System.Collections.Generic.IEnumerable{UnifiedOpennessLibrary.CmdArgument},System.String)">
+            <summary>
+            If your tool changes anything on the TIA Portal project, please use transactions!
+            </summary>
+            <param name="tiaPortalVersion">e.g. V18 or V19. It must be the part of the path in the installation folder and is the version that has been tested by you with your program</param>
+            <param name="args">just pass the arguments that you got from the command line here. You may have access via the public member "CmdArgs" to your arguments afterwards</param>
+            <param name="toolName">define the name of the tool (exe), so help text and the waiting text is more beautiful</param>
+            <param name="additionalParameters"> The following parameters are already there, so be careful with the short option of new parameters
+            new CmdArgument() { Default = "", OptionToSet = "ProcessId", OptionShort = "-id", OptionLong = "--processid", HelpText = "define a process id the tool connects to. If empty, the first TIA Portal process will be connected to" } ,
+            new CmdArgument() { Default = "", OptionToSet = "Include", OptionShort = "-i", OptionLong = "--include", HelpText = "add a list of screen names on which the tool will work on, split by semicolon (cannot be combined with --exclude), e.g. \"Screen_1;My screen 2\"" } ,
+            new CmdArgument() { Default = "", OptionToSet = "Exclude", OptionShort = "-e", OptionLong = "--exclude", HelpText = "add a list of screen names on which the tool will not work on, split by semicolon (cannot be combined with --include), e.g. \"Screen_1;My screen 2\"" },
+            new CmdArgument() { Default = "", OptionToSet = "ProjectPath", OptionShort = "-p", OptionLong = "--projectpath", HelpText = @"if you have no TIA Portal opened, the tool can open it for you and open the project from this path (ProcessId will be ignored, if this is set), e.g. D:\projects\Project1\Project1.ap18" },
+            new CmdArgument() { Default = "yes", OptionToSet = "ShowUI", OptionShort = "-ui", OptionLong = "--showui", HelpText = "if you provided a ProjectPath via -p you may decide, if TIA Portal should be opened with GUI or without, e.g. \"yes\" or \"no\"" },
+            new CmdArgument() { Default = "no", OptionToSet = "ClosingOnExit", OptionShort = "-c", OptionLong = "--closeonexit", HelpText = "you may decide, if the TIA Portal should be saved and closed when this tool is finished, e.g. \"yes\" or \"no\"" }
+            new CmdArgument() { Default = "Info", OptionToSet = "LogLevel", OptionShort = "-l", OptionLong = "--loglevel", HelpText = "define a log level: Debug,Info,Warning,Error" }
+            </param>
+        </member>
+        <member name="M:UnifiedOpennessLibrary.UnifiedOpennessConnector.ParseArguments(System.Collections.Generic.List{System.String},System.String,System.Collections.Generic.IEnumerable{UnifiedOpennessLibrary.CmdArgument})">
+            <summary>
+            parses the arguments of the input string, e.g. HMI_RT_1 -p=1234 --include="Screen_1;Screen 5" will be parsed to elements in the dictionairy: -p with string "1234" and --include with string "Screen_1;Screen 5"
+            </summary>
+            <param name="args"></param>
+            <param name="toolname"></param>
+            <param name="additionalParameters"></param>
+            <returns></returns>
+        </member>
+        <member name="M:UnifiedOpennessLibrary.UnifiedOpennessConnector.Log(System.String,UnifiedOpennessLibrary.LogLevel)">
+            <summary>
+            Please only use this function to log a message. It is using Console.Writeline() if the loglevel passed is at least as high as the loglevel set by the user.
+            </summary>
+            <param name="message"></param>
+            <param name="loglevel"></param>
+        </member>
+    </members>
+</doc>
