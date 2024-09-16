@@ -15,7 +15,7 @@ namespace ExcelExporter
         {
             using (var unifiedData = new UnifiedOpennessConnector("V19", args, new List<CmdArgument>() { new CmdArgument()
             {
-                Default = "", Required = false, OptionToSet = "DefinedAttributes", OptionLong = "-definedattributes", OptionShort = "--da", HelpText = "If you want to export only defined attributes, add a list seperated by semicolon, e.g. Left;Top;Authorization"
+                Default = "", Required = false, OptionToSet = "DefinedAttributes", OptionLong = "--definedattributes", OptionShort = "-da", HelpText = "If you want to export only defined attributes, add a list seperated by semicolon, e.g. Left;Top;Authorization"
             } }, "ExcelExporter"))
             {
                 Program.unifiedData = unifiedData;

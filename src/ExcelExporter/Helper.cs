@@ -73,7 +73,7 @@ namespace ExcelExporter
                 foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
                 {
                     Program.unifiedData.Log(attributeInfo.Name, UnifiedOpennessLibrary.LogLevel.Debug);
-                    Program.unifiedData.Log(obj.GetAttribute(attributeInfo.Name).ToString(), UnifiedOpennessLibrary.LogLevel.Debug);
+                    Program.unifiedData.Log(obj.GetAttribute(attributeInfo.Name)?.ToString(), UnifiedOpennessLibrary.LogLevel.Debug);
                 }
             }
 
