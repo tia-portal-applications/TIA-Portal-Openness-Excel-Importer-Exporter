@@ -147,7 +147,7 @@ namespace ExcelImporter
             Type type = null;
             if (sType == "HmiLine" || sType == "HmiPolyline" || sType == "HmiPolygon" || sType == "HmiEllipse" || sType == "HmiEllipseSegment"
                 || sType == "HmiCircleSegment" || sType == "HmiEllipticalArc" || sType == "HmiCircularArc" || sType == "HmiCircle" || sType == "HmiRectangle"
-                || sType == "HmiGraphicView")
+                || sType == "HmiGraphicView" || sType == "HmiText")
             {
                 type = Type.GetType("Siemens.Engineering.HmiUnified.UI.Shapes." + sType + ", Siemens.Engineering");
             }
@@ -428,8 +428,16 @@ namespace ExcelImporter
 
         static public void SetMyAttributesSimpleTypes(string keyToSet, object valueToSet, IEngineeringObject obj)
         {
-            Type _type = obj.GetAttribute(keyToSet)?.GetType() ?? 
+            Type _type = null;
+            try
+            {
+                _type = obj.GetAttribute(keyToSet)?.GetType() ??
                 obj.GetAttributeInfos().FirstOrDefault(x => x.Name == keyToSet)?.SupportedTypes.FirstOrDefault();
+            } catch (EngineeringNotSupportedException)
+            {
+                _type = obj.GetType();
+            }
+
 
             object attrVal = null;
             if (_type != null && _type.BaseType == typeof(Enum))
@@ -447,21 +455,9 @@ namespace ExcelImporter
             }
             else if (_type != null && _type.Name == "MultilingualText")
             {
-                var multiLingText = obj.GetAttribute(keyToSet) as MultilingualText;
-                obj = multiLingText.Items.FirstOrDefault();
-
-                if (obj == null)
-                {
-                    unifiedData.Log("Cannot find a language for the text property '" + keyToSet + "'.", LogLevel.Warning);
-                    return;
-                }
-                keyToSet = "Text";
-                attrVal = valueToSet.ToString();
-            }
-            else if (obj.GetType().Name == "MultilingualText")
-            {
                 var multiLingText = obj as MultilingualText;
-                obj = multiLingText.Items.First(x => x.Language.Culture.Name == keyToSet);
+                obj = multiLingText.Items.FirstOrDefault(x => x.Language.Culture.Name == keyToSet);
+
                 if (obj == null)
                 {
                     unifiedData.Log("Cannot find a language for the text property '" + keyToSet + "'.", LogLevel.Warning);
