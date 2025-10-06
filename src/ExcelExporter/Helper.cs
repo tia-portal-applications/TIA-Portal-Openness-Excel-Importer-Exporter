@@ -1,8 +1,15 @@
 ﻿using Siemens.Engineering;
+using Siemens.Engineering.HmiUnified.HmiAlarm;
+using Siemens.Engineering.HmiUnified.HmiTags;
+using Siemens.Engineering.HmiUnified.UI;
+using Siemens.Engineering.HmiUnified.UI.Dynamization;
+using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
+using Siemens.Engineering.HmiUnified.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Text;
 
 namespace ExcelExporter
 {
@@ -20,87 +27,100 @@ namespace ExcelExporter
     {
         static public Dictionary<string, object> GetAllMyAttributes(IEngineeringObject obj, Func<ParseHelperClass, bool> parse, List<string> definedAttributes = null, string fullName = "")
         {
-            //Leaves           
-            var attrKeys = from attributeInfo in obj.GetAttributeInfos()
+            //Leaves
+                var attrKeys = from attributeInfo in obj.GetAttributeInfos()
                            where Helper.IsSimple(attributeInfo.SupportedTypes.FirstOrDefault()) && attributeInfo.AccessMode.ToString() == "ReadWrite" && (definedAttributes == null ||fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null)
                            select attributeInfo.Name;
-            var attrProps = obj.GetAttributes(attrKeys);
-            var attrDict = attrKeys.Zip(attrProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
-
-
-            var colorKeys = from colorAttr in attrDict
-                       where colorAttr.Value is Color
-                       select colorAttr.Key;
-            var colorVals = obj.GetAttributes(colorKeys);
-            var colorKeyVals = colorKeys.Zip(colorVals, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
-            foreach (var colorKeyVal in colorKeyVals)
+            //if (obj.GetType().ToString() != "Siemens.Engineering.HmiUnified.UI.Parts.HmiSystemDiagnosisHardwareDetailPart")
+            try
             {
-                var color = (Color)colorKeyVal.Value;
-                attrDict.Remove(colorKeyVal.Key);
-                attrDict.Add(colorKeyVal.Key, "0x" + color.A.ToString("X2") + color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2"));
-            }
+                var attrProps = obj.GetAttributes(attrKeys);
+                var attrDict = attrKeys.Zip(attrProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
 
-            if(parse != null)
-            {
-                parse.Invoke(new ParseHelperClass(obj, attrDict));
-                // attrDict = attrDict.Concat(specialDict).ToDictionary(x => x.Key, x => x.Value);
-            }      
 
-            //Nodes          
-            var objKeys = from attributeInfo in obj.GetAttributeInfos() 
-                          where ((obj.GetAttribute(attributeInfo.Name) as IEngineeringObject) != null 
-                          && (definedAttributes == null || definedAttributes.Find(definedAttr => {
-                              var splitAttr = definedAttr.Split('.'); // ["Font", "Name"]
-                              return splitAttr.Take(splitAttr.Count() - 1).Contains(attributeInfo.Name);
-                          }) != null))
-                          select attributeInfo.Name;
-
-            var objKeyList = objKeys.ToList();
-            var objProps = obj.GetAttributes(objKeyList);
-            var objDict = objKeyList.Zip(objProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
-
-            foreach (var objKeyVal in objDict)
-            {
-                var attr = GetAllMyAttributes(objKeyVal.Value as IEngineeringObject, parse, definedAttributes, fullName + objKeyVal.Key + ".");
-                if (attr.Count != 0)
+                var colorKeys = from colorAttr in attrDict
+                                where colorAttr.Value is Color
+                                select colorAttr.Key;
+                var colorVals = obj.GetAttributes(colorKeys);
+                var colorKeyVals = colorKeys.Zip(colorVals, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+                foreach (var colorKeyVal in colorKeyVals)
                 {
-                    attrDict.Add(objKeyVal.Key, attr);
+                    var color = (Color)colorKeyVal.Value;
+                    attrDict.Remove(colorKeyVal.Key);
+                    attrDict.Add(colorKeyVal.Key, "0x" + color.A.ToString("X2") + color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2"));
                 }
-            }
 
-            if (Program.unifiedData.CmdArgs["LogLevel"] == "Debug")
-            {
-                foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
+                if (parse != null)
                 {
-                    Program.unifiedData.Log(attributeInfo.Name, UnifiedOpennessLibrary.LogLevel.Debug);
-                    Program.unifiedData.Log(obj.GetAttribute(attributeInfo.Name)?.ToString(), UnifiedOpennessLibrary.LogLevel.Debug);
+                    parse.Invoke(new ParseHelperClass(obj, attrDict));
+                    // attrDict = attrDict.Concat(specialDict).ToDictionary(x => x.Key, x => x.Value);
                 }
-            }
 
-            if (!(obj is MultilingualText))
-            {
-                //Compositions
-                foreach (var compKeyVal in obj.GetCompositionInfos().Where(c => c.Name != "ScreenItems" && c.Name != "PropertyEventHandlers" && c.Name != "Dynamizations" && c.Name != "EventHandlers"
-                && (definedAttributes == null || definedAttributes.Find(definedAttr => {
-                    var splitAttr = definedAttr.Split('.'); // "TrendAreas[0].Trends[0].DataSourceY.Source"  ->  ["TrendAreas[0]", "Trends[0]", "DataSourceY", "Source"]
-                    return splitAttr.Take(splitAttr.Count() - 1).FirstOrDefault(x => x.Split('[')[0] == c.Name) != null;
-                }) != null)))
+                //Nodes          
+                var objKeys = from attributeInfo in obj.GetAttributeInfos()
+                              where ((obj.GetAttribute(attributeInfo.Name) as IEngineeringObject) != null
+                              && (definedAttributes == null || definedAttributes.Find(definedAttr =>
+                              {
+                                  var splitAttr = definedAttr.Split('.'); // ["Font", "Name"]
+                                  return splitAttr.Take(splitAttr.Count() - 1).Contains(attributeInfo.Name);
+                              }) != null))
+                              select attributeInfo.Name;
+
+                var objKeyList = objKeys.ToList();
+                var objProps = obj.GetAttributes(objKeyList);
+                var objDict = objKeyList.Zip(objProps, (k, v) => new { k, v }).ToDictionary(x => x.k, x => x.v);
+
+                foreach (var objKeyVal in objDict)
                 {
-                    List<object> children = new List<object>();
-                    int i = 0;
-                    foreach (var item in obj.GetComposition(compKeyVal.Name) as IEngineeringComposition)
+                    var attr = GetAllMyAttributes(objKeyVal.Value as IEngineeringObject, parse, definedAttributes, fullName + objKeyVal.Key + ".");
+                    if (attr.Count != 0)
                     {
-                        children.Add(GetAllMyAttributes(item as IEngineeringObject, parse, definedAttributes, fullName + compKeyVal.Name + "[" + i + "]."));
-                        i++;
-                    }
-
-                    if (children.Count != 0)
-                    {
-                        attrDict.Add(compKeyVal.Name, children);
+                        attrDict.Add(objKeyVal.Key, attr);
                     }
                 }
+
+                if (Program.verbose)
+                {
+                    foreach (var attributeInfo in obj.GetAttributeInfos().Where(attributeInfo => definedAttributes == null || fullName + attributeInfo.Name == "Name" || definedAttributes.Find(x => x == fullName + attributeInfo.Name) != null))
+                    {
+                        Console.WriteLine(attributeInfo);
+                        var test = obj.GetAttribute(attributeInfo.Name);
+                        Console.WriteLine(test);
+                    }
+                }
+
+                if (!(obj is MultilingualText))
+                {
+                    //Compositions
+                    foreach (var compKeyVal in obj.GetCompositionInfos().Where(c => c.Name != "ScreenItems" && c.Name != "PropertyEventHandlers" && c.Name != "Dynamizations" && c.Name != "EventHandlers"
+                    && (definedAttributes == null || definedAttributes.Find(definedAttr =>
+                    {
+                        var splitAttr = definedAttr.Split('.'); // "TrendAreas[0].Trends[0].DataSourceY.Source"  ->  ["TrendAreas[0]", "Trends[0]", "DataSourceY", "Source"]
+                        return splitAttr.Take(splitAttr.Count() - 1).FirstOrDefault(x => x.Split('[')[0] == c.Name) != null;
+                    }) != null)))
+                    {
+                        List<object> children = new List<object>();
+                        int i = 0;
+                        foreach (var item in obj.GetComposition(compKeyVal.Name) as IEngineeringComposition)
+                        {
+                            children.Add(GetAllMyAttributes(item as IEngineeringObject, parse, definedAttributes, fullName + compKeyVal.Name + "[" + i + "]."));
+                            i++;
+                        }
+
+                        if (children.Count != 0)
+                        {
+                            attrDict.Add(compKeyVal.Name, children);
+                        }
+                    }
+                }
+                return attrDict;
             }
-            return attrDict;
+            catch (Exception ex) 
+            { 
+                Console.WriteLine("Error with object " + obj.GetType().ToString() + " (" + fullName + "): " + ex.Message);
+            }   
+            Dictionary<string, object> dic = new Dictionary<string, object>();
+            return dic;
         }
 
         static public void SetAllMyAttributes(Dictionary<string, object> dataTree, IEngineeringObject obj, Func<IEngineeringObject, string, object, IEngineeringObject> reParse)

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Siemens.Engineering.HmiUnified;
+using System.Drawing;
 using Siemens.Engineering;
 using Siemens.Engineering.HmiUnified.UI.Dynamization;
 using Siemens.Engineering.HmiUnified.UI;
@@ -11,33 +12,61 @@ using Siemens.Engineering.HmiUnified.UI.Base;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Flashing;
 using Siemens.Engineering.HmiUnified.UI.Parts;
+using Siemens.Engineering.HmiUnified.UI.ScreenGroup;
 
 namespace ExcelExporter
 {
     class Screen : ITiaObject
     {
         private static IEngineeringObject dyn;
+        private string screenName = "-all";
         private List<string> definedAttributes = null;
-        public Screen(List<string> definedAttributes = null)
+        public Screen(string screenName = "-all", List<string> definedAttributes = null)
         {
+            this.screenName = screenName;
             this.definedAttributes = definedAttributes;
         }
 
-        public Dictionary<string, List<Dictionary<string, object>>> Export(IEnumerable<HmiScreen> allScreens)
+        private static IEnumerable<HmiScreen> GetScreens(HmiSoftware sw)
+        {
+            var allScreens = sw.Screens.ToList();
+            allScreens.AddRange(ParseGroups(sw.ScreenGroups));
+            return allScreens;
+        }
+
+        private static IEnumerable<HmiScreen> ParseGroups(HmiScreenGroupComposition parentGroups)
+        {
+            foreach (var group in parentGroups)
+            {
+                foreach (var screen in group.Screens)
+                {
+                    yield return screen;
+                }
+                foreach (var screen in ParseGroups(group.Groups))
+                {
+                    yield return screen;
+                }
+            }
+        }
+
+        public Dictionary<string, List<Dictionary<string, object>>> Export(HmiSoftware hmiSoftware)
         {
             var list = new Dictionary<string, List<Dictionary<string, object>>>();
+            IEnumerable<HmiScreen> allScreens = GetScreens(hmiSoftware);
+            if (screenName != "-all")
+            {
+                allScreens = new List<HmiScreen>() { allScreens.First(s => s.Name == screenName) };
+            }
             //get main Screen
             //IEnumerable<HmiScreen> mainScreen = ;
             foreach (var screen in allScreens)
             {
-                Program.unifiedData.Log("Screen: " + screen.Name);
+                
                 var listScreenItems = new List<Dictionary<string, object>>();
                 listScreenItems.Add(Helper.GetAllMyAttributes(screen, ParseScreen, definedAttributes));
 
-                Program.unifiedData.Log("ScreenItems: ", UnifiedOpennessLibrary.LogLevel.Debug);
                 foreach (var screenItem in screen.ScreenItems)
                 {
-                    Program.unifiedData.Log(screenItem.Name, UnifiedOpennessLibrary.LogLevel.Debug);
                     var screenItem_ = Helper.GetAllMyAttributes(screenItem, ParseScreen, definedAttributes);
                     listScreenItems.Add(screenItem_);
                 }
@@ -167,8 +196,9 @@ namespace ExcelExporter
             }
         }
 
-        public void Import(HmiSoftware hmiSoftware, List<object> data, IEnumerable<HmiScreen> allScreens)
+        public void Import(HmiSoftware hmiSoftware, List<object> data)
         {
+            IEnumerable<HmiScreen> allScreens = GetScreens(hmiSoftware);
             HmiScreen _screen = null;
             foreach (var topLevel in data)
             {
@@ -190,19 +220,19 @@ namespace ExcelExporter
                         {
                             Type type = null;
                             if (dataTree["Type"].ToString() == "HmiLine" || dataTree["Type"].ToString() == "HmiPolyline" || dataTree["Type"].ToString() == "HmiPolygon" || dataTree["Type"].ToString() == "HmiEllipse" || dataTree["Type"].ToString() == "HmiEllipseSegment"
-                                || dataTree["Type"].ToString() == "HmiCircleSegment" || dataTree["Type"].ToString() == "HmiEllipticalArc" || dataTree["Type"].ToString() == "HmiCircularArc" || dataTree["Type"].ToString() == "HmiCircle" || dataTree["Type"].ToString() == "HmiRectangle"
-                                || dataTree["Type"].ToString() == "HmiGraphicView" || dataTree["Type"].ToString() == "HmiText") 
+                                || dataTree["Type"].ToString() == "HmiCircleSegment" || dataTree["Type"].ToString() == "HmiEllipticalArc" || dataTree["Type"].ToString() == "HmiText" || dataTree["Type"].ToString() == "HmiCircularArc" || dataTree["Type"].ToString() == "HmiCircle" || dataTree["Type"].ToString() == "HmiRectangle"
+                                || dataTree["Type"].ToString() == "HmiGraphicView") 
                             {
                                 type = Type.GetType("Siemens.Engineering.HmiUnified.UI.Shapes." + dataTree["Type"].ToString() + ", Siemens.Engineering");
                             }
                             else if (dataTree["Type"].ToString() == "HmiIOField" || dataTree["Type"].ToString() == "HmiButton" || dataTree["Type"].ToString() == "HmiToggleSwitch" || dataTree["Type"].ToString() == "HmiCheckBoxGroup" || dataTree["Type"].ToString() == "HmiBar"
-                                || dataTree["Type"].ToString() == "HmiGauge" || dataTree["Type"].ToString() == "HmiSlider" || dataTree["Type"].ToString() == "HmiRadioButtonGroup" || dataTree["Type"].ToString() == "HmiListBox" || dataTree["Type"].ToString() == "HmiClock"
+                                || dataTree["Type"].ToString() == "HmiGauge" || dataTree["Type"].ToString() == "HmiSlider" || dataTree["Type"].ToString() == "HmiSymbolicIOField" || dataTree["Type"].ToString() == "HmiRadioButtonGroup" || dataTree["Type"].ToString() == "HmiListBox" || dataTree["Type"].ToString() == "HmiClock"
                                 || dataTree["Type"].ToString() == "HmiTextBox")
                             {
                                 type = Type.GetType("Siemens.Engineering.HmiUnified.UI.Widgets." + dataTree["Type"].ToString() + ", Siemens.Engineering");
                             }
                             else if (dataTree["Type"].ToString() == "HmiAlarmControl" || dataTree["Type"].ToString() == "HmiMediaControl" || dataTree["Type"].ToString() == "HmiTrendControl" || dataTree["Type"].ToString() == "HmiTrendCompanion"
-                                || dataTree["Type"].ToString() == "HmiProcessControl" || dataTree["Type"].ToString() == "HmiFunctionTrendControl" || dataTree["Type"].ToString() == "HmiWebControl" || dataTree["Type"].ToString() == "HmiDetailedParameterControl" || dataTree["Type"].ToString() == "HmiFaceplateContainer")
+                                || dataTree["Type"].ToString() == "HmiProcessControl" || dataTree["Type"].ToString() == "HmiSystemDiagnosisControl" || dataTree["Type"].ToString() == "HmiFunctionTrendControl" || dataTree["Type"].ToString() == "HmiWebControl" || dataTree["Type"].ToString() == "HmiDetailedParameterControl" || dataTree["Type"].ToString() == "HmiFaceplateContainer")
                             {
                                 type = Type.GetType("Siemens.Engineering.HmiUnified.UI.Controls." + dataTree["Type"].ToString() + ", Siemens.Engineering");
                             }

@@ -1,47 +1,120 @@
-﻿using System.Collections.Generic;
+﻿using Siemens.Engineering;
+using Siemens.Engineering.HmiUnified;
+using Siemens.Engineering.HW.Features;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Office.Interop.Excel;
+using System.Reflection;
 using Siemens.Engineering.HmiUnified.UI.Dynamization.Tag;
-using UnifiedOpennessLibrary;
+using Siemens.Engineering.HmiUnified.UI.Screens;
+using Siemens.Engineering.HmiUnified.UI.Shapes;
+using Siemens.Engineering.HmiUnified.UI.Base;
+using Siemens.Engineering.HmiUnified.UI.Controls;
 
 namespace ExcelExporter
 {
     class Program
     {
-        public static UnifiedOpennessConnector unifiedData = null;
+        static string opennessDll;
+        static public bool verbose = false;
+        static private Assembly DomainAssemblyResolver(object sender, ResolveEventArgs args)
+        {
+            int index = args.Name.IndexOf("Siemens.Engineering,");
+
+            if (index != -1 || args.Name == "Siemens.Engineering")
+            {
+                return Assembly.LoadFrom(opennessDll);
+            }
+
+            return null;
+        }
         static void Main(string[] args)
         {
-            using (var unifiedData = new UnifiedOpennessConnector("V19", args, new List<CmdArgument>() { new CmdArgument()
+            var tiaProcesses = System.Diagnostics.Process.GetProcessesByName("Siemens.Automation.Portal");
+            if (tiaProcesses.Length == 0)
             {
-                Default = "", Required = false, OptionToSet = "DefinedAttributes", OptionLong = "--definedattributes", OptionShort = "-da", HelpText = "If you want to export only defined attributes, add a list seperated by semicolon, e.g. Left;Top;Authorization"
-            } }, "ExcelExporter"))
-            {
-                Program.unifiedData = unifiedData;
-                Work();
+                throw new Exception("No TIA Portal instance is running. Please start TIA Portal and open a project with a WinCC Unified device and run this app again!");
             }
-            unifiedData.Log("Export finished");
+            string processPath = tiaProcesses[0].MainModule.FileName;
+            string tiaPortalDirectory = Path.GetDirectoryName(processPath);
+            // 0. Load TIA Openness DLL dynamically, so it works also in all further versions
+            string tiaOpennessDllVersionNumber = "V20";
+            opennessDll = tiaPortalDirectory + "\\..\\PublicAPI\\" + tiaOpennessDllVersionNumber + "\\Siemens.Engineering.dll";
+            AppDomain.CurrentDomain.AssemblyResolve += DomainAssemblyResolver;
+
+            // TiaPortal reference must be in a seperate function to lazyload the assembly
+            Work(args);
+            Console.WriteLine("Export finished");
         }
-        static void Work()
+        static void Work(string[] args)
         {
+            string screenName = "";
+            string runTimeName = "";
             bool setProperties = false; 
             List<string> definedAttributes = null;
-            if (!string.IsNullOrEmpty(unifiedData.CmdArgs["DefinedAttributes"]))
+            while (args.Length == 0)
             {
-                definedAttributes = unifiedData.CmdArgs["DefinedAttributes"].Split(';').ToList();
-                setProperties = true; 
+                Console.WriteLine("Please define a screen name (or set -all to export all screens):");
+                Console.WriteLine("If you want to export only defined attributes, please start this tool again with arguments like this: ");
+                Console.WriteLine("HMI_Panel/Screen_1 Left Top Authorization");
+                Console.WriteLine("You can also add the verbose flag like this for more output: HMI_Panel/Screen_1 Left Top Authorization --verbose");
+                args = Console.ReadLine().Split(' ');
             }
+            
+                string firstInput = args[0];
+                if (firstInput.Contains('/'))
+                {
+                    runTimeName = firstInput.Split('/')[0];
+                    screenName = firstInput.Split('/')[1];
+                }
+                else
+                {
+                    screenName = args[0];
+                }
+
+                if (args.Length > 1)
+                {
+                    definedAttributes = args.ToList();
+                    if (definedAttributes.Contains("--verbose"))
+                    {
+                        verbose = true;
+                        definedAttributes.Remove("--verbose");
+                    }
+                    definedAttributes.RemoveAt(0); // remove first input (Runtime/screenname)
+                    setProperties = true; 
+                }
             
             YAMLConverter converter = new YAMLConverter();
             var defaultValues = (converter.Read(Directory.GetCurrentDirectory() + "\\DefaultScreen.yml")[0] as Dictionary<object, object>).FirstOrDefault().Value as List<object>;
 
             Dictionary<string, List<Dictionary<string, object>>> exportedValues = new Dictionary<string, List<Dictionary<string, object>>>();
-           
-            Screen screen = new Screen(definedAttributes);
-            exportedValues = screen.Export(unifiedData.Screens);
+            // 1. Connect to TIA Portal and find screen
+            TiaPortal tiaPortal = null;
+            try
+            {
+                // get UnifiedRuntime
+                var hmiSoftwares = GetHmiSoftwares(ref tiaPortal, runTimeName);
+                HmiSoftware software = hmiSoftwares.FirstOrDefault(); //find runtimeName
+                if (software == null)
+                {
+                    throw new Exception("No WinCC Unified software found. Please add a WinCC Unified device and run this app again!");
+                }
+                Screen screen = new Screen(screenName, definedAttributes);
+                /*HmiScreen hmiScreen = software.Screens.Find("Screen_1");
+                HmiScreenItemBaseComposition screenitems = hmiScreen.ScreenItems;
+                screenitems.Create<HmiCustomWebControlContainer>("GaugeMeter_2", "{551BF148-2F0D-4293-99C2-C9C3A1A6A073}");
+                */
+                exportedValues = screen.Export(software);
+            }
+            finally
+            {
+                tiaPortal.Dispose();
+            }
             CreateExport(exportedValues, defaultValues, setProperties);
-            unifiedData.Log("Export done");
+            Console.WriteLine("Export done");
         }
 
         private static void CreateExport(Dictionary<string, List<Dictionary<string, object>>> exportedValues, List<object> defaultValues, bool setProperties)
@@ -163,11 +236,11 @@ namespace ExcelExporter
                 }) as Dictionary<object, object>;
                 if (defaultObject == null)
                 {
-                    unifiedData.Log("Cannot find default type with name: " + type, LogLevel.Warning);
+                    Console.WriteLine("Cannot find default type with name: " + type);
                 }
                 else
                 {
-                    unifiedData.Log(defaultObject.ToString(), LogLevel.Debug);
+                    if (verbose) Console.WriteLine(defaultObject.ToString());
                     var differencesScreenItem = new Dictionary<string, object>();
                         GetDifferencesScreenItem(attributes, defaultObject, ref differencesScreenItem);
                     differencesScreenItem.Add("Type", type); // type is always needed to create the object again
@@ -235,7 +308,7 @@ namespace ExcelExporter
                 else
                 {
                     object defaultValue = null;
-                    if (defaultObject.TryGetValue(attribute.Key, out defaultValue) && defaultValue != null)
+                    if (defaultObject.TryGetValue(attribute.Key, out defaultValue) && defaultValue != null && attribute.Value != null)
                     {
                         if (string.Compare(attribute.Value.ToString(), defaultValue.ToString(), true) != 0)
                         {
@@ -248,6 +321,39 @@ namespace ExcelExporter
                     }
                 }
             }
+        }
+
+        static IEnumerable<HmiSoftware> GetHmiSoftwares(ref TiaPortal tiaPortal, string deviceName)
+        {
+            var tiaProcesses = TiaPortal.GetProcesses();
+            if (tiaProcesses.Count == 0)
+            {
+                new Exception("No TIA Portal instance is running. Please start TIA Portal and open a project with a WinCC Unified device and run this app again!");
+            }
+            var process = tiaProcesses[0];
+            tiaPortal = process.Attach();
+            Console.WriteLine("Attached to TIA Portal process id: " + process.Id);
+            if (tiaPortal.Projects.Count == 0)
+            {
+                new Exception("No TIA Portal project is open. Please open a project with a WinCC Unified device and run this app again!");
+            }
+            Project tiaPortalProject = tiaPortal.Projects.First();
+            Console.WriteLine("Attached to TIA Portal project with name: " + tiaPortalProject.Name);
+            var software = from device in tiaPortalProject.Devices
+                           from deviceItem in device.DeviceItems
+                           let softwareContainer = deviceItem.GetService<SoftwareContainer>()
+                           where softwareContainer?.Software is HmiSoftware && (string.IsNullOrWhiteSpace(deviceName) || device.Name == deviceName)
+                           select softwareContainer.Software as HmiSoftware;
+            if (software == null)
+            {
+                software = from device in tiaPortalProject.Devices
+                               from deviceItem in device.DeviceItems
+                               let softwareContainer = deviceItem.GetService<SoftwareContainer>()
+                               where softwareContainer?.Software is HmiSoftware
+                               select softwareContainer.Software as HmiSoftware;
+            }
+            return software;
+                
         }
     }
 }
